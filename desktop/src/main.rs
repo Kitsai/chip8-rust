@@ -47,7 +47,7 @@ fn main() {
     'gameloop: loop {
         for evt in event_pump.poll_iter() {
             match evt {
-                Event::Quit{..} => {
+                Event::Quit{..} | Event::KeyDown{keycode: Some(Keycode::Escape),..}=> {
                     break 'gameloop;
                 },
                 Event::KeyDown{keycode: Some(key),..} => {
