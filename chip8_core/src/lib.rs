@@ -1,3 +1,5 @@
+use rand::random;
+
 const FONTSET_SIZE: usize = 80;
 
 const FONTSET: [u8; FONTSET_SIZE] = [
@@ -107,6 +109,9 @@ impl Emu {
         }
     }
 
+    // (0x,0x,0x,0x) => {
+                
+    // },
     fn execute(&mut self, op: u16) {
         let digit1 = (op & 0xF000) >> 12;
         let digit2 = (op & 0x0F00) >> 8;
@@ -114,6 +119,207 @@ impl Emu {
         let digit4 = op & 0x000F;
 
         match (digit1, digit2, digit3, digit4) {
+            (0,0,0,0) => return,
+            //clear display
+            (0,0,0xE,0) => {
+                self.screen = [false; SCREEN_HEIGHT*SCREEN_WIDTH];
+            },
+            //ret
+            (0,0,0xE,0xE) => {
+                let ret_addr = self.pop();
+                self.pc = ret_addr;
+            },
+            //jump
+            (0x1,_,_,_) => {
+                let nnn = op & 0xFFF;
+                self.pc = nnn;
+            },
+            //call
+            (0x2,_,_,_) => {
+                let nnn = op&0xFFF;
+                self.push(self.pc);
+                self.pc = nnn;
+            }, 
+            //skip if vx == nn
+            (0x3,_,_,_) => {
+                let nn = (op&0xFF) as u8;
+                let x = digit2 as  usize;
+                if self.v_regs[x] == nn {
+                    self.pc += 2;
+                }
+            },   
+            //skip if vx != nn
+            (0x4,_,_,_) => {
+                let nn = (op&0xFF) as u8;
+                let x = digit2 as  usize;
+                if self.v_regs[x] != nn {
+                    self.pc += 2;
+                }
+            },
+            //skip if vx == vy
+            (0x5,_,_,0x0) => {
+                let x = digit2 as usize;
+                let y = digit3 as usize;
+                if self.v_regs[x] == self.v_regs[y] {
+                    self.pc += 2;
+                }
+            },
+            //li
+            (0x6,_,_,_) => {
+                let x = digit2 as usize;
+                let nn = (op&0xFF) as u8;
+                self.v_regs[x] = nn;
+            },
+            // vx += nn
+            (0x7,_,_,_) => {
+                let x = digit2 as usize;
+                let nn = (op&0xFF) as u8;
+                self.v_regs[x] = self.v_regs[x].wrapping_add(nn); //lida com overflow
+            },
+            
+            //mv   
+            (0x8,_,_,0x0) => {
+                let x = digit2 as usize;
+                let y = digit3 as usize;
+                self.v_regs[x] = self.v_regs[y];
+            },
+
+            //bitwise ops
+            //###############################################################################
+
+            // vx |= vy
+            (0x8,_,_,0x1) => {
+               let x = digit2 as usize;
+               let y = digit3 as usize;
+               self.v_regs[x] |= self.v_regs[y];  
+            },
+            // vx &= vy
+            (0x8,_,_,0x2) => {
+               let x = digit2 as usize;
+               let y = digit3 as usize;
+               self.v_regs[x] &= self.v_regs[y];  
+            },
+            // vx ^= vy
+            (0x8,_,_,0x3) => {
+               let x = digit2 as usize;
+               let y = digit3 as usize;
+               self.v_regs[x] ^= self.v_regs[y];  
+            },
+            //###############################################################################
+
+            // vx += vy
+            (0x8,_,_,0x4) => {
+               let x = digit2 as usize;
+               let y = digit3 as usize;
+
+               let (new_vx, carry) = self.v_regs[x].overflowing_add(self.v_regs[y]);
+               let new_vf = if carry {1} else {0};
+
+               self.v_regs[x] = new_vx;
+               self.v_regs[0xF] = new_vf;  
+            },
+            // vx -= vy
+            (0x8,_,_,0x5) => {
+               let x = digit2 as usize;
+               let y = digit3 as usize;
+
+               let (new_vx, carry) = self.v_regs[x].overflowing_sub(self.v_regs[y]);
+               let new_vf = if carry {0} else {1};
+
+               self.v_regs[x] = new_vx;
+               self.v_regs[0xF] = new_vf;  
+            },
+            // vx >>= vy
+            (0x8,_,_,0x6) => {
+                let x = digit2 as usize;
+                
+                let lsb = self.v_regs[x] & 1;
+                self.v_regs[x] >>= 1;
+                self.v_regs[0xF] = lsb;
+            },  
+            //vx = vy - vx
+            (0x8,_,_,0x7) => {
+                let x = digit2 as usize;
+                let y = digit3 as usize;
+                
+                let (new_vx, carry) = self.v_regs[y].overflowing_sub(self.v_regs[x]);
+                let new_vf = if carry {0} else {1};
+                
+                self.v_regs[x] = new_vx;
+                self.v_regs[0xF] = new_vf;  
+            },
+            // vx <<= vy
+            (0x8,_,_,0xE) => {
+                let x = digit2 as usize;
+                
+                let msb = (self.v_regs[x] >> 7) & 1;
+                self.v_regs[x] <<= 1;
+                self.v_regs[0xF] = msb;
+            },
+            //skip if vx != vy
+            (0x9,_,_,0x0) => {
+                let x = digit2 as usize;
+                let y = digit3 as usize;
+                if self.v_regs[x] != self.v_regs[y] {
+                    self.pc += 2;
+                }
+            },
+            // I = nnn
+            (0xA,_,_,_) => {
+                let nnn = op&0xFFF;
+                self.i_reg = nnn;    
+            },
+            // jump to v0 + nnn
+            (0xB,_,_,_) => {
+                let nnn = op&0xFFF;
+                self.pc = (self.v_regs[0] as u16) + nnn;    
+            },
+            // vx = rng & nn
+            (0xC,_,_,_) => {
+                let x = digit2 as usize;
+                let nn = (op&0xFF) as u8;
+                let rng: u8 = random();
+                self.v_regs[x] = rng & nn; 
+            },
+            //draw
+            (0xD,_,_,_) => {
+                //get cords
+                let x_coord = self.v_regs[digit2 as usize] as u16;
+                let y_coord = self.v_regs[digit3 as usize] as u16;
+                // digit 4 is height
+                let num_rows = digit4;
+
+                let mut flipped = false;
+
+                for y_line in 0..num_rows {
+                    //determine mem addr of row
+                    let addr = self.i_reg + y_line as u16;
+                    let pixels = self.ram[addr as usize];
+                    //iterate over column(always 8 bits)
+                    for x_line in 0..8 {
+                        //use mask for current bit. if 1 flip
+                        if (pixels & (0b1000_0000 >> x_line)) != 0 {
+                            //wrap sprite araund screen
+                            let x = (x_coord + x_line) as usize % SCREEN_WIDTH;
+                            let y = (y_coord + y_line) as usize % SCREEN_HEIGHT;
+
+                            //get pixel i
+                            let idx = x + SCREEN_WIDTH * y;
+                            //check if the bit is going to be flipped
+                            flipped |= self.screen[idx];
+                            self.screen[idx] ^= true;
+
+                        }
+                    }
+                }
+                //populate VF register
+                if flipped {
+                    self.v_regs[0xF] = 1;
+                } else {
+                    self.v_regs[0xF] = 0;
+                }
+            },
+            
             (_, _, _, _) => unimplemented!("Unimplemented opcode: {}",op)
         }
     }

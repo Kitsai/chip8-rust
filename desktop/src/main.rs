@@ -1,5 +1,8 @@
 use chip8_core::*;
 use std::env;
+use sdl2::event::Event;
+use std::fs::File;
+use std::io::Read;
 
 
 const SCALE: u32 = 15;
@@ -24,4 +27,24 @@ fn main() {
     let mut canvas = window.into_canvas().present_vsync().build().unwrap();
     canvas.clear();
     canvas.present();
+    let mut event_pump = sdl_context.event_pump().unwrap();
+    
+    let mut chip8 = Emu::new();
+
+    let mut rom = File::open(&args[1]).expect("Unable to open file");
+    let mut buffer = Vec::new();
+    rom.read_to_end(&mut buffer).unwrap();
+    chip8.load(&buffer);
+    
+    'gameloop: loop {
+        for evt in event_pump.poll_iter() {
+            match evt {
+                Event::Quit{..} => {
+                    break 'gameloop;
+                },
+                _ => (),
+            }
+        }
+        chip8.tick();
+    }
 }
