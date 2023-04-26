@@ -109,9 +109,6 @@ impl Emu {
         }
     }
 
-    // (0x,0x,0x,0x) => {
-                
-    // },
     fn execute(&mut self, op: u16) {
         let digit1 = (op & 0xF000) >> 12;
         let digit2 = (op & 0x0F00) >> 8;
@@ -319,7 +316,97 @@ impl Emu {
                     self.v_regs[0xF] = 0;
                 }
             },
-            
+            // skip if key press
+            (0xE,_,0x9,0xE) => {
+                let x = digit2 as usize;
+                let vx = self.v_regs[x];
+                let key = self.keys[vx as usize];
+                if key {
+                    self.pc += 2;
+                }
+            },
+            // skip if key released
+            (0xE,_,0xA,0x1) => {
+                let x = digit2 as usize;
+                let vx = self.v_regs[x];
+                let key = self.keys[vx as usize];
+                if !key {
+                    self.pc += 2;
+                }
+            },
+            // vx = dt(Delay timer)
+            (0xF,_,0x0,0x7) => {
+                let x = digit2 as usize;
+                self.v_regs[x] = self.dt;
+            },
+            //wait for key
+            (0xF,_,0x0,0xA) => {
+                let x = digit2 as usize;
+                let mut pressed = false;
+                for i in 0..self.keys.len() {
+                    if self.keys[i] {
+                        self.v_regs[x] = i as u8;
+                        pressed = true;
+                        break;
+                    }
+                }
+                if !pressed {
+                    self.pc -= 2;
+                }
+            },
+            //dt = vx
+            (0xF,_,0x1,0x5) => {
+                let x = digit2 as usize;
+                self.dt = self.v_regs[x];
+            },
+            //st = vx
+            (0xF,_,0x1,0x8) => {
+                let x = digit2 as usize;
+                self.st = self.v_regs[x];
+            },
+            // I += vx
+            (0xF,_,0x1,0xE) => {
+               let x = digit2 as usize;
+               let vx = self.v_regs[x] as u16;
+               self.i_reg = self.i_reg.wrapping_add(vx); 
+            },
+            // I to font addr
+            (0xF,_,0x2,0x9) => {
+                let x = digit2 as usize;
+                let c = self.v_regs[x] as u16;
+                self.i_reg = c * 5;
+            },
+
+            (0xF,_,0x3,0x3) => {
+               let x = digit2 as usize;
+               let vx = self.v_regs[x] as f32;
+
+               let hundreds = (vx / 100.0).floor() as u8;
+
+               let tens = ((vx / 10.0) % 10.0).floor() as u8;
+
+               let ones = (vx% 10.0) as u8;
+
+               self.ram[self.i_reg as usize] = hundreds;
+               self.ram[(self.i_reg + 1) as usize] = tens;
+               self.ram[(self.i_reg + 2) as usize] = ones; 
+            },
+            //store v0 - vx
+            (0xF,_,0x5,0x5) => {
+               let x = digit2 as usize;
+               let i = self.i_reg as usize;
+               for idx in 0..=x {
+                self.ram[i + idx] = self.v_regs[idx];
+               } 
+            },
+            //load v0- vx
+            (0xF,_,0x6,0x5) => {
+               let x = digit2 as usize;
+               let i = self.i_reg as usize;
+               for idx in 0..=x {
+                    self.v_regs[idx] = self.ram[i + idx];
+               } 
+            },
             (_, _, _, _) => unimplemented!("Unimplemented opcode: {}",op)
         }
     }
